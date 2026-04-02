@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radar IF Nacional — Rede Federal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+    <style>
+        /* ── TOKENS ─────────────────────────────────────────────── */
+        :root {
+            --bg:       #0b0f0b;
+            --surface:  #131a13;
+            --surface2: #1a241a;
+            --verde:    #00c84a;
+            --verde-dk: #00a03a;
+            --verde-gl: rgba(0,200,74,.08);
+            --amarelo:  #f5c842;
+            --txt:      #e8f0e8;
+            --txt-sec:  #7a9a7a;
+            --borda:    rgba(0,200,74,.15);
+            --radius:   14px;
+            --shadow:   0 4px 30px rgba(0,0,0,.5);
+            --shadow-h: 0 12px 50px rgba(0,200,74,.12);
+            --dur:      .3s;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--bg);
+            color: var(--txt);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        /* ── CANVAS ANTI-BURN-IN ────────────────────────────────── */
+        #bg-canvas {
+            position: fixed; inset: 0; z-index: 0; pointer-events: none;
+        }
+        header, .top-bar, #status-console, .main-content, footer {
+            position: relative; z-index: 10;
+        }
+
+        /* ── HEADER ─────────────────────────────────────────────── */
+        header {
+            background: rgba(11,15,11,.92);
+            backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--borda);
+            padding: 0 32px;
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            align-items: center;
+            gap: 24px;
+            min-height: 80px;
+            position: sticky; top: 0; z-index: 200;
+        }
+
+        /* escudo/logo institucional */
+        .brand-icon {
+            width: 48px; height: 48px;
+            background: var(--verde);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 1.1rem; color: #000; font-weight: 900;
+            letter-spacing: 1px; flex-shrink: 0;
+        }
+
+        .header-brand {
+            display: flex; flex-direction: column; justify-content: center;
+        }
+        .header-brand .eyebrow {
+            font-size: .65rem; font-weight: 700;
+            letter-spacing: 3px; text-transform: uppercase;
+            color: var(--verde); line-height: 1;
+        }
+        .header-brand h1 {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 1.8rem; line-height: 1; letter-spacing: 2px;
+            color: var(--txt);
+        }
+
+        .header-clock { text-align: right; }
+        #clock {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 2.4rem; color: var(--verde);
+            line-height: 1; letter-spacing: 2px;
+        }
+        #date-top {
+            font-size: .68rem; font-weight: 700;
+            color: var(--txt-sec); text-transform: uppercase;
+            letter-spacing: 1.5px; margin-top: 2px;
+        }
+
+        /* ── BARRA PROGRESSO ────────────────────────────────────── */
+        .top-bar { height: 2px; background: var(--surface2); }
+        #bar-fill {
+            height: 100%;
+            background: linear-gradient(to right, var(--verde-dk), var(--verde));
+            transition: width 1s linear;
+            box-shadow: 0 0 10px var(--verde);
+        }
+
+        /* ── CONSOLE ─────────────────────────────────────────────── */
+        #status-console {
+            font-family: 'DM Sans', monospace;
+            font-size: .75rem; color: var(--verde);
+            background: #050805;
+            padding: 6px 16px;
+            display: flex; align-items: center; gap: 8px;
+            border-bottom: 1px solid var(--borda);
+        }
+        #status-console::before {
+            content: '▶'; font-size: .55rem;
+            animation: blink 2s ease infinite;
+        }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.1} }
+
+        /* ── INSTITUTOS — PILLS COLORIDOS ───────────────────────── */
+        .filters-wrap {
+            display: flex; flex-wrap: wrap;
+            gap: 8px; padding: 20px 20px 0;
+            max-width: 1600px; margin: 0 auto; width: 100%;
+        }
+        .filters-label {
+            font-size: .65rem; font-weight: 700;
+            letter-spacing: 2px; text-transform: uppercase;
+            color: var(--txt-sec); align-self: center; margin-right: 4px;
+        }
+        .btn-filter {
+            border: 1.5px solid var(--borda);
+            background: transparent;
+            color: var(--txt-sec);
+            padding: 6px 16px; border-radius: 999px;
+            cursor: pointer; font-size: .8rem; font-weight: 700;
+            font-family: 'DM Sans', sans-serif;
+            transition: all var(--dur); white-space: nowrap;
+        }
+        .btn-filter:hover { border-color: var(--verde); color: var(--verde); }
+        .btn-filter.active {
+            background: var(--verde); color: #000;
+            border-color: var(--verde);
+            box-shadow: 0 0 14px rgba(0,200,74,.35);
+        }
+
+        /* Cada instituto recebe uma cor de acento */
+        .btn-filter[data-if="IFBA"].active   { background:#009639; border-color:#009639; box-shadow:0 0 14px rgba(0,150,57,.4); }
+        .btn-filter[data-if="IFB"].active    { background:#0057a8; border-color:#0057a8; box-shadow:0 0 14px rgba(0,87,168,.4); }
+        .btn-filter[data-if="IFSP"].active   { background:#c8102e; border-color:#c8102e; box-shadow:0 0 14px rgba(200,16,46,.4); }
+        .btn-filter[data-if="IFRN"].active   { background:#f5931e; border-color:#f5931e; box-shadow:0 0 14px rgba(245,147,30,.4); }
+        .btn-filter[data-if="IFRJ"].active   { background:#6b21a8; border-color:#6b21a8; box-shadow:0 0 14px rgba(107,33,168,.4); }
+
+        /* ── LAYOUT PRINCIPAL ───────────────────────────────────── */
+        .main-content {
+            padding: 20px 20px 110px;
+            flex: 1; max-width: 1600px; margin: 0 auto; width: 100%;
+        }
+
+        /* ── SKELETON ───────────────────────────────────────────── */
+        #skeleton {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px,1fr));
+            gap: 16px; margin-top: 20px;
+        }
+        .sk-card {
+            background: var(--surface);
+            border-radius: var(--radius); height: 200px;
+            overflow: hidden; position: relative;
+            border: 1px solid var(--borda);
+        }
+        .sk-card::after {
+            content: ''; position: absolute; inset: 0;
+            background: linear-gradient(90deg,transparent,rgba(0,200,74,.06),transparent);
+            background-size: 200% 100%; animation: shimmer 1.6s infinite;
+        }
+        @keyframes shimmer { from{background-position:200% 0} to{background-position:-200% 0} }
+
+        /* ── NEWS GRID ──────────────────────────────────────────── */
+        #news-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px,1fr));
+            gap: 16px; margin-top: 20px;
+        }
+
+        /* ── CARD ───────────────────────────────────────────────── */
+        .card {
+            display: flex; flex-direction: column;
+            background: var(--surface);
+            border: 1px solid var(--borda);
+            border-radius: var(--radius); overflow: hidden;
+            text-decoration: none; color: inherit;
+            box-shadow: var(--shadow);
+            transition: box-shadow var(--dur), transform var(--dur), border-color var(--dur);
+            position: relative;
+            animation: fadeUp .5s ease both;
+        }
+        @keyframes fadeUp {
+            from { opacity:0; transform:translateY(18px); }
+            to   { opacity:1; transform:translateY(0); }
+        }
+
+        .card:nth-child(1){animation-delay:.04s}.card:nth-child(2){animation-delay:.08s}
+        .card:nth-child(3){animation-delay:.12s}.card:nth-child(4){animation-delay:.16s}
+        .card:nth-child(5){animation-delay:.20s}.card:nth-child(6){animation-delay:.24s}
+        .card:nth-child(7){animation-delay:.28s}.card:nth-child(8){animation-delay:.32s}
+        .card:nth-child(n+9){animation-delay:.36s}
+
+        /* linha de acento colorida no topo de cada card */
+        .card::before {
+            content: ''; position: absolute;
+            top:0; left:0; right:0; height: 3px;
+            background: var(--card-accent, var(--verde));
+        }
+
+        .card:hover {
+            box-shadow: var(--shadow-h);
+            transform: translateY(-4px);
+            border-color: var(--card-accent, var(--verde));
+        }
+
+        /* destaque: card largo */
+        .card.featured {
+            grid-column: 1 / -1;
+            flex-direction: row;
+            max-height: 260px;
+        }
+        .card.featured::before { width: 4px; height: 100%; right: auto; bottom:0; top:0; }
+
+        /* ── IMAGEM KEN BURNS ───────────────────────────────────── */
+        .img-box {
+            position: relative; overflow: hidden;
+            background: var(--surface2); flex-shrink: 0;
+        }
+        .card:not(.featured) .img-box { height: 170px; }
+        .card.featured .img-box { width: 40%; height: 100%; }
+
+        .img-src {
+            width: 100%; height: 100%;
+            background-size: 115%; background-position: center;
+        }
+        .img-src.fallback {
+            background-size: 40%;
+            background-repeat: no-repeat;
+            animation: none !important;
+            filter: brightness(.7);
+        }
+
+        @keyframes kb-tl { 0%{transform:scale(1.12) translate(-3%,-3%)} 50%{transform:scale(1.00) translate(2%,2%)} 100%{transform:scale(1.12) translate(-3%,-3%)} }
+        @keyframes kb-tr { 0%{transform:scale(1.10) translate(3%,-3%)} 50%{transform:scale(1.00) translate(-2%,2%)} 100%{transform:scale(1.10) translate(3%,-3%)} }
+        @keyframes kb-br { 0%{transform:scale(1.12) translate(3%,3%)} 50%{transform:scale(1.00) translate(-2%,-2%)} 100%{transform:scale(1.12) translate(3%,3%)} }
+        @keyframes kb-bl { 0%{transform:scale(1.10) translate(-3%,3%)} 50%{transform:scale(1.00) translate(2%,-2%)} 100%{transform:scale(1.10) translate(-3%,3%)} }
+        .kb-0{animation:kb-tl 30s ease-in-out infinite}
+        .kb-1{animation:kb-tr 34s ease-in-out infinite}
+        .kb-2{animation:kb-br 28s ease-in-out infinite}
+        .kb-3{animation:kb-bl 32s ease-in-out infinite}
+
+        /* gradiente escuro na base da imagem */
+        .img-box::after {
+            content: '';
+            position: absolute; bottom:0; left:0; right:0;
+            height: 60%;
+            background: linear-gradient(to top, rgba(0,0,0,.6), transparent);
+            pointer-events: none;
+        }
+
+        /* ── BADGE IF ────────────────────────────────────────────── */
+        .badge {
+            position: absolute; bottom: 10px; left: 10px; z-index: 2;
+            background: var(--card-accent, var(--verde));
+            color: #fff;
+            font-size: .62rem; font-weight: 900;
+            padding: 3px 10px; border-radius: 999px;
+            text-transform: uppercase; letter-spacing: 1.5px;
+        }
+        /* cor escura para amarelo/claro */
+        .badge.dark-text { color: #000; }
+
+        /* ── INFO ────────────────────────────────────────────────── */
+        .info {
+            padding: 16px 18px;
+            display: flex; flex-direction: column;
+            justify-content: center; gap: 8px;
+            flex: 1; overflow: hidden;
+            border-top: 1px solid var(--borda);
+        }
+        .card.featured .info { border-top: none; border-left: 1px solid var(--borda); }
+
+        .card-meta {
+            display: flex; align-items: center; gap: 6px;
+        }
+        .card-meta time {
+            font-size: .68rem; font-weight: 700;
+            color: var(--txt-sec); text-transform: uppercase; letter-spacing: 1px;
+        }
+        .if-tag {
+            font-size: .6rem; font-weight: 900;
+            padding: 2px 7px; border-radius: 4px;
+            background: var(--card-accent, var(--verde));
+            color: #000; text-transform: uppercase; letter-spacing: 1px;
+        }
+
+        .title {
+            font-family: 'DM Sans', sans-serif;
+            font-size: .98rem; font-weight: 700;
+            line-height: 1.35; color: var(--txt);
+            display: -webkit-box; -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical; overflow: hidden;
+        }
+        .card.featured .title { font-size: 1.3rem; -webkit-line-clamp: 4; }
+
+        .card-link-hint {
+            font-size: .68rem; font-weight: 700;
+            color: var(--card-accent, var(--verde));
+            text-transform: uppercase; letter-spacing: 1px;
+            opacity: 0; transform: translateX(-4px);
+            transition: opacity .2s, transform .2s;
+        }
+        .card:hover .card-link-hint { opacity:1; transform:translateX(0); }
+
+        /* ── SEPARADOR SEÇÃO ─────────────────────────────────────── */
+        .section-header {
+            display: flex; align-items: center; gap: 12px;
+            margin: 28px 0 0;
+        }
+        .section-header h2 {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 1.3rem; letter-spacing: 2px;
+            color: var(--txt-sec);
+        }
+        .section-line {
+            flex: 1; height: 1px; background: var(--borda);
+        }
+        .section-count {
+            font-size: .7rem; font-weight: 700;
+            color: var(--txt-sec); letter-spacing: 1px;
+            padding: 3px 10px; border: 1px solid var(--borda);
+            border-radius: 999px;
+        }
+
+        /* ── TOAST ───────────────────────────────────────────────── */
+        #toast {
+            position: fixed; bottom: 76px; left: 50%;
+            transform: translateX(-50%) translateY(16px);
+            background: var(--verde); color: #000;
+            font-family: 'DM Sans', sans-serif;
+            font-size: .82rem; font-weight: 700;
+            padding: 9px 22px; border-radius: 999px;
+            box-shadow: 0 6px 24px rgba(0,200,74,.35);
+            opacity: 0; transition: opacity .4s, transform .4s;
+            pointer-events: none; z-index: 500;
+        }
+        #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+        /* ── FOOTER ──────────────────────────────────────────────── */
+        footer {
+            position: fixed; bottom:0; left:0; right:0;
+            background: rgba(11,15,11,.92);
+            backdrop-filter: blur(14px);
+            border-top: 1px solid var(--borda);
+            padding: 12px 24px;
+            display: flex; justify-content: center; align-items: center; gap: 20px;
+            z-index: 300;
+        }
+        .btn-pdf {
+            background: var(--verde); color: #000; border: none;
+            padding: 10px 26px; border-radius: 999px; cursor: pointer;
+            font-family: 'DM Sans', sans-serif;
+            font-size: .82rem; font-weight: 900; letter-spacing: .5px;
+            transition: all var(--dur);
+            display: flex; align-items: center; gap: 8px;
+        }
+        .btn-pdf:hover { background: #00ff60; box-shadow: 0 0 20px rgba(0,200,74,.5); transform: translateY(-2px); }
+        .footer-info { font-size: .72rem; color: var(--txt-sec); font-weight: 500; }
+        .footer-info strong { color: var(--txt); }
+
+        /* ── RESPONSIVE ──────────────────────────────────────────── */
+        @media (max-width: 900px) {
+            header { grid-template-columns: auto 1fr auto; gap:12px; padding:0 16px; }
+            .header-brand h1 { font-size:1.4rem; }
+            #clock { font-size:1.8rem; }
+            .card.featured { flex-direction:column; max-height:none; grid-column:auto; }
+            .card.featured .img-box { width:100%; height:180px; }
+            .card.featured .info { border-left:none; border-top:1px solid var(--borda); }
+            #news-container { grid-template-columns:1fr; }
+        }
+        @media (min-width:1400px) { #news-container { grid-template-columns: repeat(3,1fr); } }
+    </style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+
+<!-- HEADER -->
+<header>
+    <div class="brand-icon">IF</div>
+    <div class="header-brand">
+        <span class="eyebrow">Rede Federal · Monitor de Notícias</span>
+        <h1>RADAR IF NACIONAL</h1>
+    </div>
+    <div class="header-clock">
+        <div id="date-top">—</div>
+        <div id="clock">00:00:00</div>
+    </div>
+</header>
+
+<div class="top-bar"><div id="bar-fill" style="width:100%"></div></div>
+<div id="status-console">Sistema inicializando…</div>
+
+<div class="main-content">
+    <!-- FILTROS -->
+    <div class="filters-wrap" id="filters-wrap">
+        <span class="filters-label">Filtrar</span>
+    </div>
+
+    <!-- SKELETON -->
+    <div id="skeleton">
+        <div class="sk-card"></div><div class="sk-card"></div>
+        <div class="sk-card"></div><div class="sk-card"></div>
+        <div class="sk-card"></div>
+    </div>
+
+    <div id="news-container" style="display:none"></div>
+</div>
+
+<div id="toast"></div>
+
+<footer>
+    <button class="btn-pdf" onclick="gerarPDF()">
+        📄 Exportar PDF — <span id="pdf-ctx">Geral</span>
+    </button>
+    <span class="footer-info">Busca a cada <strong>1h</strong> · Verifica a cada <strong>5min</strong></span>
+</footer>
+
+<script>
+/* ════════════════════════════════════════════════════════════
+   INSTITUTOS
+   Cada IF tem: id, nome completo, sigla, cor de acento,
+   URL da API WordPress (ou null se não usar WP) e
+   opcionalmente um feed RSS via proxy público.
+════════════════════════════════════════════════════════════ */
+const INSTITUTOS = [
+    {
+        id:    "IFBA",
+        nome:  "Instituto Federal da Bahia",
+        cor:   "#009639",
+        logo:  "https://portal.ifba.edu.br/++theme++ifba.theme/images/logo_ifba.svg",
+        tipo:  "wp",
+        url:   "https://portal.ifba.edu.br/wp-json/wp/v2/posts/",
+    },
+    {
+        id:    "IFB",
+        nome:  "Instituto Federal de Brasília",
+        cor:   "#0057a8",
+        logo:  "https://www.ifb.edu.br/images/logo_ifb.png",
+        tipo:  "wp",
+        url:   "https://www.ifb.edu.br/wp-json/wp/v2/posts/",
+    },
+    {
+        id:    "IFSP",
+        nome:  "Instituto Federal de São Paulo",
+        cor:   "#c8102e",
+        logo:  "https://www.ifsp.edu.br/images/logo_ifsp.png",
+        // IFSP usa Joomla — buscamos via feed RSS com proxy CORS
+        tipo:  "rss",
+        url:   "https://api.rss2json.com/v1/api.json?rss_url=https%3A%2F%2Fwww.ifsp.edu.br%2Fnoticias%3Fformat%3Dfeed%26type%3Drss",
+    },
+    {
+        id:    "IFRN",
+        nome:  "Instituto Federal do Rio Grande do Norte",
+        cor:   "#f5931e",
+        logo:  "https://portal.ifrn.edu.br/logo.png",
+        tipo:  "rss",
+        url:   "https://api.rss2json.com/v1/api.json?rss_url=https%3A%2F%2Fportal.ifrn.edu.br%2FRSS",
+    },
+    {
+        id:    "IFRJ",
+        nome:  "Instituto Federal do Rio de Janeiro",
+        cor:   "#6b21a8",
+        logo:  "https://portal.ifrj.edu.br/logo.png",
+        tipo:  "rss",
+        url:   "https://api.rss2json.com/v1/api.json?rss_url=https%3A%2F%2Fportal.ifrj.edu.br%2FRSS",
+    },
+];
+
+/* ════════════════════════════════════════════════════════════
+   CONFIG
+════════════════════════════════════════════════════════════ */
+const CONFIG = {
+    FETCH_INTERVAL_MS: 60 * 60 * 1000,
+    CHECK_INTERVAL_MS:  5 * 60 * 1000,
+    POSTS_PER_IF:      6,
+    CACHE_KEY:         "radar_if_nacional_v1",
+    CACHE_TTL_MS:      55 * 60 * 1000,
+};
+
+/* ════════════════════════════════════════════════════════════
+   ESTADO
+════════════════════════════════════════════════════════════ */
+let dataStore     = [];
+let currentFilter = "Todos";
+let barTimer      = null;
+let fetchCD       = CONFIG.FETCH_INTERVAL_MS / 1000;
+
+/* ════════════════════════════════════════════════════════════
+   DOM
+════════════════════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+const elClock    = $("clock"), elDate = $("date-top");
+const elConsole  = $("status-console"), elBarFill = $("bar-fill");
+const elFilters  = $("filters-wrap");
+const elNews     = $("news-container"), elSkeleton = $("skeleton");
+const elPdfCtx   = $("pdf-ctx"), elToast = $("toast");
+
+/* ════════════════════════════════════════════════════════════
+   ANTI-BURN-IN CANVAS
+   Bolhas escuras com brilho verde se movem no fundo.
+════════════════════════════════════════════════════════════ */
+(function initBg() {
+    const canvas = $("bg-canvas");
+    const ctx    = canvas.getContext("2d");
+
+    const BLOBS = [
+        { r:300, cr:0, cg:200, cb:74, ca:.04, vx:.18, vy:.12 },
+        { r:280, cr:0, cg:150, cb:50, ca:.03, vx:-.14, vy:.18 },
+        { r:350, cr:20, cg:20, cb:20, ca:.6, vx:.10, vy:-.12 },
+        { r:260, cr:0, cg:200, cb:74, ca:.03, vx:-.18, vy:-.10 },
+        { r:380, cr:10, cg:10, cb:10, ca:.5, vx:.12, vy:.08 },
+        { r:240, cr:0, cg:180, cb:60, ca:.03, vx:.08, vy:.20 },
+    ];
+
+    function resize() {
+        canvas.width  = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener("resize", resize);
+
+    BLOBS.forEach(b => {
+        b.x = Math.random() * window.innerWidth;
+        b.y = Math.random() * window.innerHeight;
+    });
+
+    function frame() {
+        const W = canvas.width, H = canvas.height;
+        ctx.fillStyle = "#0b0f0b";
+        ctx.fillRect(0, 0, W, H);
+
+        BLOBS.forEach(b => {
+            const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
+            g.addColorStop(0, `rgba(${b.cr},${b.cg},${b.cb},${b.ca})`);
+            g.addColorStop(1, `rgba(${b.cr},${b.cg},${b.cb},0)`);
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+            ctx.fillStyle = g; ctx.fill();
+            b.x += b.vx; b.y += b.vy;
+            if (b.x < -b.r) b.x = W+b.r; if (b.x > W+b.r) b.x = -b.r;
+            if (b.y < -b.r) b.y = H+b.r; if (b.y > H+b.r) b.y = -b.r;
+        });
+        requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+})();
+
+/* ════════════════════════════════════════════════════════════
+   RELÓGIO
+════════════════════════════════════════════════════════════ */
+function updateClock() {
+    const now = new Date();
+    elClock.textContent = now.toLocaleTimeString("pt-BR");
+    elDate.textContent  = now.toLocaleDateString("pt-BR", { day:"2-digit", month:"long", year:"numeric" });
+}
+setInterval(updateClock, 1000); updateClock();
+
+/* ════════════════════════════════════════════════════════════
+   BARRA PROGRESSO
+════════════════════════════════════════════════════════════ */
+function startBar() {
+    fetchCD = CONFIG.FETCH_INTERVAL_MS / 1000;
+    clearInterval(barTimer);
+    barTimer = setInterval(() => {
+        fetchCD--;
+        elBarFill.style.width = (fetchCD / (CONFIG.FETCH_INTERVAL_MS/1000)*100) + "%";
+        if (fetchCD <= 0) { clearInterval(barTimer); giroCompleto(); }
+    }, 1000);
+}
+
+/* ════════════════════════════════════════════════════════════
+   TOAST
+════════════════════════════════════════════════════════════ */
+function showToast(msg) {
+    elToast.textContent = msg;
+    elToast.classList.add("show");
+    setTimeout(() => elToast.classList.remove("show"), 5000);
+}
+
+/* ════════════════════════════════════════════════════════════
+   FILTROS
+════════════════════════════════════════════════════════════ */
+function buildFilters() {
+    const makeBtn = (label, active=false, ifId=null) => {
+        const b = document.createElement("button");
+        b.className = "btn-filter" + (active?" active":"");
+        b.textContent = label;
+        if (ifId) b.dataset.if = ifId;
+        b.onclick = () => applyFilter(label, b);
+        return b;
+    };
+    elFilters.appendChild(makeBtn("Todos", true));
+    INSTITUTOS.forEach(i => elFilters.appendChild(makeBtn(i.id, false, i.id)));
+}
+
+function applyFilter(id, btn) {
+    currentFilter = id;
+    document.querySelectorAll(".btn-filter").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    elPdfCtx.textContent = id === "Todos" ? "Geral" : id;
+    render(dataStore);
+}
+
+/* ════════════════════════════════════════════════════════════
+   CACHE
+════════════════════════════════════════════════════════════ */
+function saveCache(data) {
+    try { sessionStorage.setItem(CONFIG.CACHE_KEY, JSON.stringify({ts:Date.now(), data})); } catch(_){}
+}
+function loadCache() {
+    try {
+        const raw = sessionStorage.getItem(CONFIG.CACHE_KEY);
+        if (!raw) return null;
+        const {ts, data} = JSON.parse(raw);
+        if (Date.now()-ts < CONFIG.CACHE_TTL_MS) return data;
+    } catch(_){}
+    return null;
+}
+
+/* ════════════════════════════════════════════════════════════
+   PARSERS
+════════════════════════════════════════════════════════════ */
+const ENTITIES = {"&#8211;":"–","&#8220;":"\u201C","&#8221;":"\u201D","&nbsp;":" ","&amp;":"&","&#8217;":"'"};
+const decode = t => t ? t.replace(/&#\d+;|&\w+;/g, m => ENTITIES[m] ?? m).replace(/<[^>]+>/g,"").trim() : "";
+
+function parseWP(post, inst) {
+    let img = inst.logo || "", imgFallback = true;
+    if (post._embedded?.["wp:featuredmedia"]?.[0]?.source_url) {
+        img = post._embedded["wp:featuredmedia"][0].source_url; imgFallback = false;
+    } else {
+        const m = post.content?.rendered?.match(/src="([^"]+\.(jpg|jpeg|png|webp)[^"]*)"/i);
+        if (m) { img = m[1]; imgFallback = false; }
+    }
+    return {
+        title:    decode(post.title?.rendered || ""),
+        link:     post.link,
+        date:     new Date(post.date),
+        ifId:     inst.id,
+        ifNome:   inst.nome,
+        ifCor:    inst.cor,
+        img, imgFallback,
+    };
+}
+
+function parseRSS(item, inst) {
+    let img = inst.logo || "", imgFallback = true;
+    if (item.thumbnail && item.thumbnail.startsWith("http")) { img = item.thumbnail; imgFallback = false; }
+    else if (item.enclosure?.link)  { img = item.enclosure.link; imgFallback = false; }
+    else {
+        const m = (item.description||"").match(/src="([^"]+\.(jpg|jpeg|png|webp)[^"]*)"/i);
+        if (m) { img = m[1]; imgFallback = false; }
+    }
+    return {
+        title:    decode(item.title || ""),
+        link:     item.link,
+        date:     new Date(item.pubDate || item.published || Date.now()),
+        ifId:     inst.id,
+        ifNome:   inst.nome,
+        ifCor:    inst.cor,
+        img, imgFallback,
+    };
+}
+
+/* ════════════════════════════════════════════════════════════
+   FETCH POR INSTITUTO
+════════════════════════════════════════════════════════════ */
+async function fetchInstituto(inst) {
+    try {
+        if (inst.tipo === "wp") {
+            const res   = await fetch(`${inst.url}?per_page=${CONFIG.POSTS_PER_IF}&_embed&_t=${Date.now()}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const posts = await res.json();
+            return Array.isArray(posts) ? posts.map(p => parseWP(p, inst)) : [];
+        }
+
+        if (inst.tipo === "rss") {
+            const res  = await fetch(inst.url + `&_t=${Date.now()}&count=${CONFIG.POSTS_PER_IF}`);
+            if (!res.ok) throw new Error();
+            const data = await res.json();
+            const items = data.items || [];
+            return items.slice(0, CONFIG.POSTS_PER_IF).map(i => parseRSS(i, inst));
+        }
+    } catch(_) {
+        // fallback: retorna dados antigos desse IF
+        return dataStore.filter(n => n.ifId === inst.id);
+    }
+    return [];
+}
+
+/* ════════════════════════════════════════════════════════════
+   GIRO COMPLETO (paralelo)
+════════════════════════════════════════════════════════════ */
+async function giroCompleto() {
+    elConsole.textContent = "Buscando notícias de todos os Institutos Federais…";
+    const prevLinks = new Set(dataStore.map(n => n.link));
+
+    const results = await Promise.allSettled(INSTITUTOS.map(fetchInstituto));
+    const batch   = results.flatMap(r => r.status === "fulfilled" ? r.value : []);
+
+    if (batch.length) {
+        const novas = batch.filter(n => !prevLinks.has(n.link)).length;
+        dataStore = batch;
+        saveCache(batch);
+        if (novas > 0 && prevLinks.size > 0)
+            showToast(`✓ ${novas} nova${novas>1?"s":""} notícia${novas>1?"s":""} na Rede Federal`);
+    }
+
+    render(dataStore);
+    hideSkeleton();
+    const agora = new Date().toLocaleTimeString("pt-BR");
+    const prox  = new Date(Date.now()+CONFIG.FETCH_INTERVAL_MS).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+    elConsole.textContent = `Online ● ${dataStore.length} notícias · Sincronizado às ${agora} · Próxima busca: ${prox}`;
+    startBar();
+}
+
+/* ════════════════════════════════════════════════════════════
+   CHECK PERIÓDICO
+════════════════════════════════════════════════════════════ */
+setInterval(() => {
+    const cached = loadCache();
+    if (!cached) return;
+    const rehy = cached.map(n => ({...n, date:new Date(n.date)}));
+    if (rehy[0]?.link !== dataStore[0]?.link) {
+        dataStore = rehy; render(dataStore);
+        elConsole.textContent = `Exibição atualizada às ${new Date().toLocaleTimeString("pt-BR")}`;
+    }
+}, CONFIG.CHECK_INTERVAL_MS);
+
+/* ════════════════════════════════════════════════════════════
+   RENDER
+════════════════════════════════════════════════════════════ */
+const KB = ["kb-0","kb-1","kb-2","kb-3"];
+
+function buildList(list) {
+    if (currentFilter === "Todos") {
+        // 1 destaque por IF, ordenados pela data mais recente
+        const map = new Map();
+        list.forEach(n => {
+            const prev = map.get(n.ifId);
+            if (!prev || n.date > prev.date) map.set(n.ifId, n);
+        });
+        return Array.from(map.values()).sort((a,b) => b.date - a.date);
+    }
+    return list.filter(n => n.ifId === currentFilter).sort((a,b) => b.date - a.date);
+}
+
+function fmtDate(d) {
+    return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"short",year:"numeric"})
+         + " · "
+         + d.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+}
+
+// Cor do texto do badge: branco para cores escuras, preto para cores claras
+function badgeTextColor(hex) {
+    const r = parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+    return (r*0.299 + g*0.587 + b*0.114) > 150 ? "dark-text" : "";
+}
+
+function cardHTML(n, i) {
+    const featured = i===0 && currentFilter==="Todos" ? " featured" : "";
+    const kb       = n.imgFallback ? "" : " "+KB[i%4];
+    const badgeCls = badgeTextColor(n.ifCor);
+    const accentStyle = `--card-accent:${n.ifCor}`;
+    return `
+    <a href="${n.link}" target="_blank" rel="noopener"
+       class="card${featured}" style="${accentStyle}">
+        <div class="img-box">
+            <div class="img-src${n.imgFallback?" fallback":""}${kb}"
+                 style="background-image:url('${n.img}')"></div>
+            <div class="badge ${badgeCls}">${n.ifId}</div>
+        </div>
+        <div class="info">
+            <div class="card-meta">
+                <time>${fmtDate(n.date)}</time>
+            </div>
+            <h2 class="title">${n.title}</h2>
+            <div class="card-link-hint">↗ Ler notícia</div>
+        </div>
+    </a>`;
+}
+
+function render(list) {
+    const display = buildList(list);
+    if (!display.length) {
+        elNews.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px;color:var(--txt-sec)">
+            <p style="font-size:1rem">Nenhuma notícia encontrada para <strong>${currentFilter}</strong>.</p>
+        </div>`;
+    } else {
+        // Se filtro específico, mostra cabeçalho com nome do IF
+        const inst = INSTITUTOS.find(i => i.id === currentFilter);
+        let header = "";
+        if (inst) {
+            header = `<div class="section-header" style="grid-column:1/-1">
+                <h2>${inst.nome}</h2>
+                <div class="section-line"></div>
+                <span class="section-count">${display.length} notícia${display.length!==1?"s":""}</span>
+            </div>`;
+        }
+        elNews.innerHTML = header + display.map(cardHTML).join("");
+    }
+    elNews.style.display = "grid";
+}
+
+function hideSkeleton() {
+    if (elSkeleton) elSkeleton.style.display = "none";
+}
+
+/* ════════════════════════════════════════════════════════════
+   PDF
+════════════════════════════════════════════════════════════ */
+async function gerarPDF() {
+    if (!window.jspdf?.jsPDF) { alert("Biblioteca PDF carregando…"); return; }
+    if (!dataStore.length)    { alert("Aguarde a sincronização."); return; }
+
+    const {jsPDF} = window.jspdf;
+    const doc  = new jsPDF("p","mm","a4");
+    const now  = new Date();
+    const label = currentFilter === "Todos" ? "Geral — Rede Federal" : currentFilter;
+
+    const rows = (currentFilter === "Todos" ? [...dataStore] : dataStore.filter(n=>n.ifId===currentFilter))
+        .sort((a,b)=>b.date-a.date)
+        .map(n=>[
+            n.date.toLocaleDateString("pt-BR")+"\n"+n.date.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}),
+            n.ifId, n.title+"\n\n"+n.link
+        ]);
+
+    // Cabeçalho
+    doc.setFillColor(11,15,11); doc.rect(0,0,210,297,"F");
+    doc.setFillColor(0,150,57); doc.rect(0,0,210,18,"F");
+    doc.setFont("helvetica","bold"); doc.setFontSize(11); doc.setTextColor(0,0,0);
+    doc.text(`RADAR IF NACIONAL — ${label}`,10,12);
+    doc.setFont("helvetica","normal"); doc.setFontSize(8); doc.setTextColor(200,200,200);
+    doc.text(`Gerado em ${now.toLocaleDateString("pt-BR")} às ${now.toLocaleTimeString("pt-BR")}  ·  ${rows.length} notícias`,10,30);
+
+    doc.autoTable({
+        startY: 38,
+        head:   [["Data/Hora","Instituto","Título e URL"]],
+        body:   rows,
+        headStyles:   { fillColor:[0,150,57], textColor:[0,0,0], fontStyle:"bold", fontSize:8 },
+        bodyStyles:   { fontSize:7.5, cellPadding:3, textColor:[220,220,220], fillColor:[19,26,19] },
+        alternateRowStyles: { fillColor:[26,36,26] },
+        columnStyles: { 0:{cellWidth:24}, 1:{cellWidth:18}, 2:{cellWidth:135} },
+        margin: { left:10, right:10 },
+    });
+
+    doc.save(`Radar_IF_Nacional_${label.replace(/[\s—]/g,"_")}_${now.toLocaleDateString("pt-BR").replace(/\//g,"-")}.pdf`);
+    elConsole.textContent = "✓ Relatório gerado com sucesso.";
+}
+
+/* ════════════════════════════════════════════════════════════
+   INIT
+════════════════════════════════════════════════════════════ */
+function init() {
+    buildFilters();
+
+    const cached = loadCache();
+    if (cached?.length) {
+        dataStore = cached.map(n=>({...n, date:new Date(n.date)}));
+        render(dataStore);
+        hideSkeleton();
+        elConsole.textContent = "Cache restaurado. Buscando atualizações…";
+    }
+
+    giroCompleto();
+}
+
+init();
+</script>
+</body>
+</html>
